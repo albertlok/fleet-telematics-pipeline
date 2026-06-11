@@ -1,0 +1,23 @@
+# A Service gives pods a stable network address. type=LoadBalancer asks
+# Azure to provision a public IP and route external traffic (the
+# provider's webhooks) to the ingestion pods.
+#
+# Production hardening: put an Ingress controller with TLS in front
+# (e.g. nginx-ingress + cert-manager) so webhooks arrive over HTTPS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion
+  namespace: telematics-pipeline
+  annotations:
+    # Tells the Azure load balancer to use our health endpoint when
+    # deciding which pods are healthy.
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /healthz
+spec:
+  type: LoadBalancer
+  selector:
+    app: ingestion        # routes to any pod with this label
+  ports:
+    - name: http
+      port: 80            # external port
+      targetPort: 8000    # the container's port

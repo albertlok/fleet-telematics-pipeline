@@ -1,0 +1,22 @@
+# A ConfigMap holds NON-SECRET configuration as key/value pairs. The
+# deployments mount these as environment variables (via envFrom), which
+# is how the Python Settings classes (config.py) pick them up.
+#
+# Secrets (DB password, webhook secret) do NOT belong here — they go in
+# a Kubernetes Secret. See the README, step "Apply the Kubernetes Secret".
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-config
+  namespace: telematics-pipeline
+data:
+  # "kafka" / "redis" are Kubernetes Service names — the cluster's
+  # internal DNS resolves them to the right pods automatically.
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_TOPIC_RAW: "telemetry.raw.events"
+  KAFKA_TOPIC_DLQ: "telemetry.dlq"
+  KAFKA_CONSUMER_GROUP: "telemetry-processor"
+  REDIS_URL: "redis://redis:6379/0"
+  BATCH_SIZE: "500"
+  BATCH_FLUSH_SECONDS: "2.0"
+  LOG_LEVEL: "INFO"

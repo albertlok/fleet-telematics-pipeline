@@ -1,0 +1,97 @@
+# Single-broker Kafka for DEVELOPMENT and STAGING only.
+#
+# Why a StatefulSet instead of a Deployment? Kafka stores data on disk
+# and needs a stable identity and a persistent volume that survives pod
+# restarts — exactly what StatefulSets provide.
+#
+# For PRODUCTION use one of:
+#   * Strimzi operator (https://strimzi.io) — runs a proper 3-broker,
+#     replicated Kafka cluster inside AKS.
+#   * Azure Event Hubs with its Kafka-compatible endpoint — fully
+#     managed; just point KAFKA_BOOTSTRAP_SERVERS at it.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: telematics-pipeline
+spec:
+  serviceName: kafka
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: bitnami/kafka:3.7
+          ports:
+            - containerPort: 9092
+          # This is "KRaft" mode — modern Kafka without ZooKeeper. One
+          # node plays both roles: broker (stores/serves messages) and
+          # controller (manages cluster metadata).
+          env:
+            - name: KAFKA_CFG_NODE_ID
+              value: "1"
+            - name: KAFKA_CFG_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_CFG_LISTENERS
+              value: "PLAINTEXT://:9092,CONTROLLER://:9093"
+            - name: KAFKA_CFG_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://kafka:9092"
+            - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+            - name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
+              value: "1@kafka:9093"
+            - name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            # Auto-create topics on first use — fine for dev; in
+            # production create topics explicitly with the partition
+            # count and replication factor you actually want.
+            - name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
+            # Keep messages for 7 days. This is the pipeline's safety
+            # buffer: if the database is down for hours, events wait
+            # here and nothing is lost.
+            - name: KAFKA_CFG_LOG_RETENTION_HOURS
+              value: "168"
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /bitnami/kafka
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+  # volumeClaimTemplates create an Azure managed disk per replica that
+  # persists across pod restarts.
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: managed-premium   # Azure premium SSD
+        resources:
+          requests:
+            storage: 50Gi
+---
+# A "headless" Service (clusterIP: None) gives the StatefulSet pod a
+# stable DNS name (kafka) that the producers/consumers connect to.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: telematics-pipeline
+spec:
+  clusterIP: None
+  selector:
+    app: kafka
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: 9092

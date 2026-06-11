@@ -1,0 +1,29 @@
+# Python build artifacts and caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+
+# Local environment files hold credentials — never commit them.
+# (.env.example is the safe, value-free template and IS committed.)
+.env
+.env.*
+!.env.example
+
+# Editor and OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Docker image exports
+*.tar
+
+# Terraform state (if infrastructure-as-code is added later)
+.terraform/
+*.tfstate
+*.tfstate.backup

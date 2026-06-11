@@ -1,0 +1,10 @@
+# A namespace is a "folder" inside the Kubernetes cluster. Everything in
+# this pipeline lives in the telematics-pipeline namespace so it's easy
+# to find (kubectl get all -n telematics-pipeline), easy to secure, and
+# easy to delete in one shot if you need to start over.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: telematics-pipeline
+  labels:
+    app.kubernetes.io/part-of: telematics-pipeline

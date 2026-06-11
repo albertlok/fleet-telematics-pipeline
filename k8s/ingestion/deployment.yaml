@@ -1,0 +1,61 @@
+# Deployment for the ingestion service (the webhook receiver).
+# A Deployment tells Kubernetes "keep N identical copies (pods) of this
+# container running, and replace any that die".
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion
+  namespace: telematics-pipeline
+  labels:
+    app: ingestion
+spec:
+  # Two replicas minimum so a single pod crash (or a node going down for
+  # maintenance) never makes us drop webhooks. The HPA can raise this.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ingestion
+  template:
+    metadata:
+      labels:
+        app: ingestion
+    spec:
+      containers:
+        - name: ingestion
+          # <ACR_NAME> is replaced by scripts/deploy.sh (or the CI
+          # pipeline) with your Azure Container Registry name.
+          image: <ACR_NAME>.azurecr.io/telemetry-ingestion:latest
+          ports:
+            - containerPort: 8000
+          # envFrom injects every key from the ConfigMap and Secret as
+          # an environment variable — config.py reads them from there.
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
+            - secretRef:
+                name: pipeline-secrets
+          # requests = guaranteed resources used for scheduling;
+          # limits = hard cap before throttling (CPU) or OOM-kill (memory).
+          resources:
+            requests:
+              cpu: "250m"        # 0.25 of a CPU core
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          # Readiness: "can this pod take traffic?" — failing pods are
+          # removed from the load balancer but not restarted.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          # Liveness: "is this pod alive at all?" — failing pods are
+          # restarted.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20

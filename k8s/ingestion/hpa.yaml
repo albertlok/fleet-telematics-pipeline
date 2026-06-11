@@ -1,0 +1,24 @@
+# HPA = Horizontal Pod Autoscaler. Watches average CPU across the
+# ingestion pods and adds/removes replicas to keep it near the target.
+# Telematics traffic is very bursty (fleets all start driving around
+# 8 AM) — autoscaling absorbs the morning spike without paying for
+# peak capacity all day.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ingestion-hpa
+  namespace: telematics-pipeline
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ingestion
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70   # scale out when avg CPU > 70% of requests

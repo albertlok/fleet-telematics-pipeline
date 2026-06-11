@@ -1,0 +1,42 @@
+# Deployment for the processor (Kafka consumer → PostgreSQL writer).
+# No Service object is needed: the processor makes outbound connections
+# (to Kafka, Redis, Postgres) but nothing connects TO it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: processor
+  namespace: telematics-pipeline
+  labels:
+    app: processor
+spec:
+  # Tip: there's no benefit to running more processor pods than the raw
+  # topic has Kafka partitions — extra pods would sit idle.
+  replicas: 3
+  selector:
+    matchLabels:
+      app: processor
+  template:
+    metadata:
+      labels:
+        app: processor
+    spec:
+      # On shutdown, Kubernetes sends SIGTERM and waits this many seconds
+      # before force-killing. main.py catches SIGTERM, flushes the
+      # in-memory batch to the DB, and commits Kafka offsets — 60s gives
+      # it comfortable room to finish.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: processor
+          image: <ACR_NAME>.azurecr.io/telemetry-processor:latest
+          envFrom:
+            - configMapRef:
+                name: pipeline-config
+            - secretRef:
+                name: pipeline-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"

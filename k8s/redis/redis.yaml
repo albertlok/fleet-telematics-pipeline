@@ -1,0 +1,53 @@
+# Redis — the deduplication cache.
+#
+# A plain Deployment (not StatefulSet) is fine here: the dedup cache is
+# allowed to be lossy. If Redis restarts and forgets recent event ids,
+# the worst case is a few duplicate rows reaching the database — and the
+# UNIQUE constraint + ON CONFLICT there absorbs those anyway.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: telematics-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          # Cap memory at 512MB; when full, evict the least-recently-used
+          # keys. Old dedup entries are the safest thing to lose.
+          args: ["--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "250m"
+              memory: "512Mi"
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: telematics-pipeline
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379

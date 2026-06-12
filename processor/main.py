@@ -125,9 +125,15 @@ def run():
             if msg is None:
                 pass  # quiet moment — fall through to the flush check
             elif msg.error():
-                # _PARTITION_EOF just means "you've read everything so
-                # far" — not a real error.
-                if msg.error().code() != KafkaError._PARTITION_EOF:
+                code = msg.error().code()
+                # _PARTITION_EOF: read to the current end — not an error.
+                # UNKNOWN_TOPIC_OR_PART: transient on startup before the
+                # broker finishes loading; librdkafka retries automatically.
+                if code == KafkaError._PARTITION_EOF:
+                    pass
+                elif code == KafkaError.UNKNOWN_TOPIC_OR_PART:
+                    log.warning("Consumer error (transient): %s", msg.error())
+                else:
                     log.error("Consumer error: %s", msg.error())
             else:
                 _handle_message(msg, batch, dedup, dlq_producer)

@@ -174,7 +174,6 @@ fleet-telematics-pipeline/
 | Docker | 24+ | Building images, local Kafka/Redis/Postgres |
 | kubectl | 1.29+ | Talking to the AKS cluster |
 | Azure CLI (`az`) | 2.60+ | Provisioning Azure resources |
-| psql | 14+ | Applying the database schema |
 
 Install the Azure CLI: https://learn.microsoft.com/en-us/cli/azure/install-azure-cli
 
@@ -217,13 +216,25 @@ docker run -d --name kafka --network telemetry-dev \
   apache/kafka:3.7.0
 ```
 
-### 3. Create the database schema
+### 3. Create Kafka topics
+
+```bash
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 --create --if-not-exists \
+  --topic telemetry.raw.events --partitions 1 --replication-factor 1
+
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 --create --if-not-exists \
+  --topic telemetry.dlq --partitions 1 --replication-factor 1
+```
+
+### 4. Create the database schema
 
 ```bash
 docker exec -i postgres psql -U fleet -d telemetry -f - < sql/001_schema.sql
 ```
 
-### 4. Run the ingestion service (terminal 1)
+### 6. Run the ingestion service (terminal 1)
 
 ```bash
 cd ingestion
@@ -232,7 +243,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-### 5. Run the processor worker (terminal 2)
+### 7. Run the processor worker (terminal 2)
 
 ```bash
 cd processor
@@ -241,7 +252,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### 6. Send a test event (terminal 3)
+### 8. Send a test event (terminal 3)
 
 ```bash
 curl -X POST http://localhost:8000/webhooks/telemetry \
@@ -328,12 +339,14 @@ kubectl create secret generic pipeline-secrets \
 
 ### Step 3 — Apply the database schema
 
-```bash
-psql "postgresql://fleet:<password>@<pg-fqdn>:5432/telemetry?sslmode=require" \
-  -f sql/001_schema.sql
-```
+The managed PostgreSQL server has no public endpoint (VNet-integrated only), so run `psql` from a temporary pod inside the cluster:
 
-(The managed server is created with `--public-access None`, so run this from a machine inside the VNet, or temporarily allow your IP with `az postgres flexible-server firewall-rule create`.)
+```bash
+kubectl run psql-migration --image=postgres:16-alpine \
+  -n telematics-pipeline --restart=Never --rm -i \
+  -- psql "postgresql://fleet:<password>@<pg-fqdn>:5432/telemetry?sslmode=require" \
+  < sql/001_schema.sql
+```
 
 ### Step 4 — Build, push, and deploy
 
@@ -502,6 +515,52 @@ These dev/staging conveniences should be replaced before real production traffic
 | `BATCH_SIZE` | `500` | Events per DB write batch |
 | `BATCH_FLUSH_SECONDS` | `2.0` | Max wait before flushing a partial batch |
 | `LOG_LEVEL` | `INFO` | Python logging level |
+
+---
+
+## Teardown
+
+### Local development
+
+Stop the services and remove the Docker containers:
+
+```bash
+# Stop the ingestion and processor processes
+# (Ctrl-C in each terminal, or kill the processes)
+
+# Remove local Docker containers and the shared network
+docker rm -f kafka redis postgres
+docker network rm telemetry-dev
+```
+
+### Azure (full teardown)
+
+Deleting the resource group removes everything — AKS, ACR, PostgreSQL, VNet, DNS zone — in one shot:
+
+```bash
+az group delete --name fleet-pipeline-rg --yes
+```
+
+> Add `--no-wait` if you want to kick it off and return to the prompt immediately. Deletion takes a few minutes.
+
+### Azure (stop costs without deleting)
+
+If you want to pause spending but keep the infrastructure:
+
+```bash
+# Stop all AKS node VMs (no compute charges while stopped)
+az aks stop --resource-group fleet-pipeline-rg --name fleet-pipeline-aks
+
+# Resume when ready
+az aks start --resource-group fleet-pipeline-rg --name fleet-pipeline-aks
+```
+
+> PostgreSQL Flexible Server accrues storage charges even when the AKS cluster is stopped. To pause the database server as well:
+>
+> ```bash
+> az postgres flexible-server stop --resource-group fleet-pipeline-rg --name fleet-telemetry-pg
+> az postgres flexible-server start --resource-group fleet-pipeline-rg --name fleet-telemetry-pg
+> ```
 
 ---
 

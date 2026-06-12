@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # Also load values from a local .env file if present (dev convenience).
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Shared secret for verifying webhook signatures.
     # Empty string = verification disabled (local dev only!).

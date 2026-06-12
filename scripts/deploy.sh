@@ -25,12 +25,12 @@ echo "==> Logging in to ACR"
 az acr login --name "$ACR_NAME"
 
 echo "==> Building and pushing ingestion image (tag: $TAG)"
-docker build -t "${REGISTRY}/telemetry-ingestion:${TAG}" ingestion/
-docker push "${REGISTRY}/telemetry-ingestion:${TAG}"
+docker buildx build --platform linux/amd64 \
+  -t "${REGISTRY}/telemetry-ingestion:${TAG}" ingestion/ --push
 
 echo "==> Building and pushing processor image (tag: $TAG)"
-docker build -t "${REGISTRY}/telemetry-processor:${TAG}" processor/
-docker push "${REGISTRY}/telemetry-processor:${TAG}"
+docker buildx build --platform linux/amd64 \
+  -t "${REGISTRY}/telemetry-processor:${TAG}" processor/ --push
 
 # The manifests in git contain placeholders. We render real values into
 # a temporary copy and apply THAT, leaving the originals untouched —

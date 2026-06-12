@@ -217,13 +217,25 @@ docker run -d --name kafka --network telemetry-dev \
   apache/kafka:3.7.0
 ```
 
-### 3. Create the database schema
+### 3. Create Kafka topics
+
+```bash
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 --create --if-not-exists \
+  --topic telemetry.raw.events --partitions 1 --replication-factor 1
+
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 --create --if-not-exists \
+  --topic telemetry.dlq --partitions 1 --replication-factor 1
+```
+
+### 4. Create the database schema
 
 ```bash
 docker exec -i postgres psql -U fleet -d telemetry -f - < sql/001_schema.sql
 ```
 
-### 4. Run the ingestion service (terminal 1)
+### 6. Run the ingestion service (terminal 1)
 
 ```bash
 cd ingestion
@@ -232,7 +244,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-### 5. Run the processor worker (terminal 2)
+### 7. Run the processor worker (terminal 2)
 
 ```bash
 cd processor
@@ -241,7 +253,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### 6. Send a test event (terminal 3)
+### 8. Send a test event (terminal 3)
 
 ```bash
 curl -X POST http://localhost:8000/webhooks/telemetry \
